@@ -1,0 +1,8 @@
+paramiko
+requests
+openpyxl
+networkx
+matplotlib
+python-pptx
+pyvis
+pyinstaller
