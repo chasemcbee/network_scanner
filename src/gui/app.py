@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
+
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from scanner.cisco_scanner import scan_cisco_devices
 from scanner.fortinet_scanner import scan_fortinet_devices
 from scanner.discovery_engine import build_inventory
