@@ -10,7 +10,7 @@ from scanner.cisco_scanner import scan_cisco_devices
 from scanner.fortinet_scanner import scan_fortinet_devices
 from scanner.discovery_engine import build_inventory
 from scanner.visio_export import export_to_visio
-import os
+
 
 class NetworkScannerApp:
     def __init__(self, root):
