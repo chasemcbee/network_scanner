@@ -2,7 +2,7 @@ import sqlite3
 import win32com.client
 from database_manager import get_active_database_path
 
-def export_to_visio(db_path=None, filename="network_topology.vsdx"):
+def export_to_visio(db_path=None, hostname_filter=None, type_filter=None, filename="network_topology.vsdx"):
     if db_path is None:
         db_path = get_active_database_path()
 
@@ -18,8 +18,11 @@ def export_to_visio(db_path=None, filename="network_topology.vsdx"):
     cursor.execute("SELECT fg_ip, name, ip FROM fortinet_aps")
     aps = cursor.fetchall()
 
-    cursor.execute("SELECT fg_ip, asset_name, ip, type FROM fortigate_assets")
-    assets = cursor.fetchall()
+    try:
+        cursor.execute("SELECT fg_ip, name, ip, type FROM fortinet_endpoints")
+        assets = cursor.fetchall()
+    except:
+        assets = []
 
     conn.close()
 
@@ -59,13 +62,18 @@ def export_to_visio(db_path=None, filename="network_topology.vsdx"):
             page.DrawLine(node_refs[fg_ip].CellsU("PinX").ResultIU, node_refs[fg_ip].CellsU("PinY").ResultIU,
                           s.CellsU("PinX").ResultIU, s.CellsU("PinY").ResultIU)
 
-    for fg_ip, name, ip, _ in assets:
-        if fg_ip in node_refs:
-            x2, y2 = x + 4, y - 1
-            label = name or ip
-            s = drop_shape(label, "Rectangle", x2, y2)
-            page.DrawLine(node_refs[fg_ip].CellsU("PinX").ResultIU, node_refs[fg_ip].CellsU("PinY").ResultIU,
-                          s.CellsU("PinX").ResultIU, s.CellsU("PinY").ResultIU)
+    for fg_ip, name, ip, typ in assets:
+        if fg_ip not in node_refs:
+            continue
+        if hostname_filter and hostname_filter.lower() not in name.lower():
+            continue
+        if type_filter and type_filter.lower() not in typ.lower():
+            continue
+        x2, y2 = x + 4, y - 1
+        label = name or ip
+        s = drop_shape(label, "Rectangle", x2, y2)
+        page.DrawLine(node_refs[fg_ip].CellsU("PinX").ResultIU, node_refs[fg_ip].CellsU("PinY").ResultIU,
+                      s.CellsU("PinX").ResultIU, s.CellsU("PinY").ResultIU)
 
     full_path = filename if filename.endswith(".vsdx") else filename + ".vsdx"
     doc.SaveAs(full_path)

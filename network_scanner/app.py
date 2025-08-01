@@ -32,6 +32,15 @@ tk.Label(root, text="SSH Password:").grid(row=3, column=0)
 ssh_pass_entry = tk.Entry(root, show="*")
 ssh_pass_entry.grid(row=3, column=1)
 
+# === FILTER OPTIONS ===
+tk.Label(root, text="Filter by Endpoint Hostname (optional):").grid(row=5, column=0)
+hostname_filter_entry = tk.Entry(root)
+hostname_filter_entry.grid(row=5, column=1)
+
+tk.Label(root, text="Filter by Endpoint Type (optional):").grid(row=6, column=0)
+type_filter_entry = tk.Entry(root)
+type_filter_entry.grid(row=6, column=1)
+
 # === ACTION BUTTONS ===
 tk.Button(root, text="Run Scan", command=lambda: scan_fortigate(
     ip_entry.get(),
@@ -40,8 +49,17 @@ tk.Button(root, text="Run Scan", command=lambda: scan_fortigate(
     ssh_password=ssh_pass_entry.get()
 )).grid(row=4, column=0, pady=10)
 
-tk.Button(root, text="Export to Excel", command=lambda: export_to_excel(get_active_database_path())).grid(row=4, column=1)
-tk.Button(root, text="Export to Visio", command=lambda: export_to_visio(get_active_database_path())).grid(row=4, column=2)
+tk.Button(root, text="Export to Excel", command=lambda: export_to_excel(
+    get_active_database_path(),
+    hostname_filter=hostname_filter_entry.get().strip(),
+    type_filter=type_filter_entry.get().strip()
+)).grid(row=4, column=1)
+
+tk.Button(root, text="Export to Visio", command=lambda: export_to_visio(
+    get_active_database_path(),
+    hostname_filter=hostname_filter_entry.get().strip(),
+    type_filter=type_filter_entry.get().strip()
+)).grid(row=4, column=2)
 
 # === DATABASE MENU ===
 def show_database_menu():

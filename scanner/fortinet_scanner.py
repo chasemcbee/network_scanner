@@ -12,7 +12,6 @@ def save_to_db(table, columns, values):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Check existing columns if table already exists
     cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
     if cursor.fetchone():
         cursor.execute(f"PRAGMA table_info({table})")
@@ -67,6 +66,58 @@ def call_api(ip, api_key, endpoint):
         print(f"[!] API call error to {endpoint}: {e}")
         return None
 
+def parse_wlac_vap(output, fg_ip):
+    aps = []
+    entries = output.split("\n\n")
+    for block in entries:
+        lines = block.strip().splitlines()
+        ap = {"fg_ip": fg_ip, "source": "fortigate (ssh)"}
+        for line in lines:
+            if "vap-name" in line:
+                ap["vap_name"] = line.split(":")[1].strip()
+            elif "ssid" in line:
+                ap["ssid"] = line.split(":")[1].strip()
+            elif "bssid" in line:
+                ap["bssid"] = line.split(":")[1].strip()
+            elif "radio-id" in line:
+                ap["radio_id"] = line.split(":")[1].strip()
+            elif "band" in line:
+                ap["band"] = line.split(":")[1].strip()
+            elif "vlan-id" in line:
+                ap["vlan_id"] = line.split(":")[1].strip()
+            elif "intf" in line:
+                ap["interface"] = line.split(":")[1].strip()
+            elif "wtp-name" in line:
+                ap["ap_name"] = line.split(":")[1].strip()
+            elif "wtp-ip" in line:
+                ap["ap_ip"] = line.split(":")[1].strip()
+        if "ap_name" in ap and "ap_ip" in ap:
+            aps.append(ap)
+    return aps
+
+def parse_switch_system_info(output, fg_ip):
+    switches = []
+    blocks = output.split("\n\n")
+    for block in blocks:
+        lines = block.strip().splitlines()
+        sw = {"fg_ip": fg_ip, "source": "fortigate (ssh)"}
+        for line in lines:
+            if "hostname" in line:
+                sw["hostname"] = line.split(":")[1].strip()
+            elif "ip" in line and "ip6" not in line:
+                sw["ip"] = line.split(":")[1].strip()
+            elif "model" in line:
+                sw["model"] = line.split(":")[1].strip()
+            elif "serial" in line:
+                sw["serial"] = line.split(":")[1].strip()
+            elif "version" in line:
+                sw["version"] = line.split(":")[1].strip()
+            elif "status" in line:
+                sw["status"] = line.split(":")[1].strip()
+        if "ip" in sw:
+            switches.append(sw)
+    return switches
+
 def scan_fortigate(ip, api_key=None, ssh_username=None, ssh_password=None):
     print(f"--- FortiGate: {ip} ---")
 
@@ -80,7 +131,6 @@ def scan_fortigate(ip, api_key=None, ssh_username=None, ssh_password=None):
         else:
             print("[!] FortiGate status failed")
 
-        # Switches
         sw_data = call_api(ip, api_key, "cmdb/switch-controller/managed-switch")
         if sw_data and sw_data.get("results"):
             for s in sw_data["results"]:
@@ -90,7 +140,6 @@ def scan_fortigate(ip, api_key=None, ssh_username=None, ssh_password=None):
         else:
             print("[!] FortiGate switch error or no results")
 
-        # APs
         ap_data = call_api(ip, api_key, "cmdb/wireless-controller/wtp")
         if ap_data and ap_data.get("results"):
             for a in ap_data["results"]:
@@ -101,15 +150,30 @@ def scan_fortigate(ip, api_key=None, ssh_username=None, ssh_password=None):
             print("[!] FortiGate AP error or no results")
 
     if ssh_username and ssh_password:
-        raw = ssh_command(ip, ssh_username, ssh_password, "diagnose user device list")
-        if raw:
-            assets = parse_device_list(raw)
-            if assets:
-                for a in assets:
-                    save_to_db("fortigate_assets",
-                        ["fg_ip TEXT", "asset_name TEXT", "ip TEXT", "type TEXT", "source TEXT"],
-                        (ip, a[0], a[1], a[2], "ssh"))
-            else:
-                print("[!] No parsed data for fortigate_assets")
-        else:
-            print("[!] No SSH response for asset discovery")
+        sw_ssh_output = ssh_command(ip, ssh_username, ssh_password, "diagnose switch-controller switch-info")
+
+        system_output = ssh_command(ip, ssh_username, ssh_password, "diagnose switch-controller system-info show")
+        if system_output:
+            switch_list = parse_switch_system_info(system_output, ip)
+            for sw in switch_list:
+                save_to_db("fortinet_switches",
+                    ["fg_ip TEXT", "hostname TEXT", "ip TEXT", "model TEXT", "serial TEXT", "version TEXT", "status TEXT", "source TEXT"],
+                    [sw.get("fg_ip", ""), sw.get("hostname", ""), sw.get("ip", ""), sw.get("model", ""), sw.get("serial", ""), sw.get("version", ""), sw.get("status", ""), sw.get("source", "")])
+
+        ap_ssh_output = ssh_command(ip, ssh_username, ssh_password, "diagnose wireless-controller wlac -c wtp")
+
+        vap_output = ssh_command(ip, ssh_username, ssh_password, "get wireless-controller wlac vap")
+        if vap_output:
+            aps = parse_wlac_vap(vap_output, ip)
+            for ap in aps:
+                save_to_db("fortinet_aps",
+                    ["fg_ip TEXT", "ap_name TEXT", "ap_ip TEXT", "vap_name TEXT", "ssid TEXT", "bssid TEXT", "radio_id TEXT", "band TEXT", "vlan_id TEXT", "interface TEXT", "source TEXT"],
+                    [ap.get("fg_ip", ""), ap.get("ap_name", ""), ap.get("ap_ip", ""), ap.get("vap_name", ""), ap.get("ssid", ""), ap.get("bssid", ""), ap.get("radio_id", ""), ap.get("band", ""), ap.get("vlan_id", ""), ap.get("interface", ""), ap.get("source", "")])
+
+        asset_output = ssh_command(ip, ssh_username, ssh_password, "diagnose user device list")
+        if asset_output:
+            assets = parse_device_list(asset_output)
+            for name, asset_ip, typ, src in assets:
+                save_to_db("fortinet_endpoints",
+                    ["fg_ip TEXT", "name TEXT", "ip TEXT", "type TEXT", "source TEXT"],
+                    [ip, name, asset_ip, typ, src])
